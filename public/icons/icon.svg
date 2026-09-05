@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="FormuleProf">
+  <rect width="512" height="512" fill="#0a2a1f"/>
+  <rect x="24" y="24" width="464" height="464" fill="none" stroke="#c2620f" stroke-width="16"/>
+  <path d="M96 400 C 176 400, 176 256, 256 256 S 336 112, 416 112" fill="none" stroke="#f2f0e8" stroke-width="34" stroke-linecap="square"/>
+  <g fill="#c2620f">
+    <rect x="76" y="380" width="40" height="40"/>
+    <rect x="396" y="92" width="40" height="40"/>
+  </g>
+</svg>
