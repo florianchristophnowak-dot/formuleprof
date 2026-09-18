@@ -1220,6 +1220,18 @@ textarea {
 
 .tabelle__rollbereich {
   overflow-x: auto;
+  max-width: 100%;
+}
+
+/*
+ * Rasterelemente wachsen sonst auf die Breite ihres Inhalts. Damit breite
+ * Tabellen innerhalb ihres Rollbereichs bleiben, wird die Mindestbreite
+ * ausdrücklich aufgehoben.
+ */
+.stapel > *,
+.raster > *,
+.karte {
+  min-width: 0;
 }
 
 .tabelle__zeile--aktuell > th,
@@ -1279,6 +1291,11 @@ textarea {
 
   .tabelle th {
     background: #eeeeee;
+  }
+
+  /* Im Druck wird nicht gerollt – die Tabellen stehen vollständig. */
+  .tabelle__rollbereich {
+    overflow: visible;
   }
 
   a[href^='#']::after {

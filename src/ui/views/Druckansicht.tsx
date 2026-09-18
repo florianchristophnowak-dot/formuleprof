@@ -66,35 +66,37 @@ export function Druckansicht() {
           {APP_SUBTITLE}
         </p>
 
-        <table className="tabelle" style={{ marginBottom: 20 }}>
-          <caption className="nur-lesbar">Ausbildungsangaben</caption>
-          <tbody>
-            <tr>
-              <th scope="row">Bezeichnung</th>
-              <td>{profile.displayName || 'ohne Angabe'}</td>
-              <th scope="row">Bundesland</th>
-              <td>{profile.federalState}</td>
-            </tr>
-            <tr>
-              <th scope="row">Ausbildungsbeginn</th>
-              <td>{formatDate(profile.startDate)}</td>
-              <th scope="row">Schulart</th>
-              <td>{profile.schoolType}</td>
-            </tr>
-            <tr>
-              <th scope="row">Ausbildungsende</th>
-              <td>{formatDate(trainingEndDate(profile.startDate, profile.durationMonths))}</td>
-              <th scope="row">Ausbildungsform</th>
-              <td>{profile.trainingForm}</td>
-            </tr>
-            <tr>
-              <th scope="row">Dauer</th>
-              <td>{formatNumber(profile.durationMonths)} Monate</td>
-              <th scope="row">Fächer</th>
-              <td>{profile.subjects.join(', ') || 'ohne Angabe'}</td>
-            </tr>
-          </tbody>
-        </table>
+        <div className="tabelle__rollbereich">
+          <table className="tabelle" style={{ marginBottom: 20 }}>
+            <caption className="nur-lesbar">Ausbildungsangaben</caption>
+            <tbody>
+              <tr>
+                <th scope="row">Bezeichnung</th>
+                <td>{profile.displayName || 'ohne Angabe'}</td>
+                <th scope="row">Bundesland</th>
+                <td>{profile.federalState}</td>
+              </tr>
+              <tr>
+                <th scope="row">Ausbildungsbeginn</th>
+                <td>{formatDate(profile.startDate)}</td>
+                <th scope="row">Schulart</th>
+                <td>{profile.schoolType}</td>
+              </tr>
+              <tr>
+                <th scope="row">Ausbildungsende</th>
+                <td>{formatDate(trainingEndDate(profile.startDate, profile.durationMonths))}</td>
+                <th scope="row">Ausbildungsform</th>
+                <td>{profile.trainingForm}</td>
+              </tr>
+              <tr>
+                <th scope="row">Dauer</th>
+                <td>{formatNumber(profile.durationMonths)} Monate</td>
+                <th scope="row">Fächer</th>
+                <td>{profile.subjects.join(', ') || 'ohne Angabe'}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
 
         {groups.map((group) => (
           <section key={group.phase.id}>
@@ -105,35 +107,37 @@ export function Druckansicht() {
             {group.milestones.length === 0 ? (
               <p className="klein gedaempft">Kein Meilenstein in dieser Etappe.</p>
             ) : (
-              <table className="tabelle">
-                <caption className="nur-lesbar">Meilensteine der Etappe {group.phase.title}</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Termin</th>
-                    <th scope="col">Meilenstein</th>
-                    <th scope="col">Kategorie</th>
-                    <th scope="col">Vorlauf</th>
-                    <th scope="col">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {group.milestones.map((milestone) => (
-                    <tr key={milestone.id}>
-                      <td style={{ whiteSpace: 'nowrap' }}>
-                        {formatRange(effectiveStart(milestone), effectiveEnd(milestone))}
-                      </td>
-                      <td>
-                        <strong>{milestone.title}</strong>
-                        <br />
-                        <span className="klein">{milestone.description}</span>
-                      </td>
-                      <td>{milestone.category}</td>
-                      <td>{formatNumber(milestone.leadTimeDays)} Tage</td>
-                      <td>{trackStateOf(milestone, app.today)}</td>
+              <div className="tabelle__rollbereich">
+                <table className="tabelle">
+                  <caption className="nur-lesbar">Meilensteine der Etappe {group.phase.title}</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Termin</th>
+                      <th scope="col">Meilenstein</th>
+                      <th scope="col">Kategorie</th>
+                      <th scope="col">Vorlauf</th>
+                      <th scope="col">Status</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {group.milestones.map((milestone) => (
+                      <tr key={milestone.id}>
+                        <td style={{ whiteSpace: 'nowrap' }}>
+                          {formatRange(effectiveStart(milestone), effectiveEnd(milestone))}
+                        </td>
+                        <td>
+                          <strong>{milestone.title}</strong>
+                          <br />
+                          <span className="klein">{milestone.description}</span>
+                        </td>
+                        <td>{milestone.category}</td>
+                        <td>{formatNumber(milestone.leadTimeDays)} Tage</td>
+                        <td>{trackStateOf(milestone, app.today)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </section>
         ))}
@@ -150,27 +154,29 @@ export function Druckansicht() {
               {load.currentRow?.stage ? ` Aktueller Abschnitt: ${load.currentRow.stage.title}.` : ''}
             </p>
             {load.halfYears.length > 0 && (
-              <table className="tabelle">
-                <caption className="nur-lesbar">Selbstständiger Unterricht je Halbjahr</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Ausbildungshalbjahr</th>
-                    <th scope="col">Erfasste Wochen</th>
-                    <th scope="col">Selbstständiger Unterricht im Durchschnitt</th>
-                    <th scope="col">Höchstwert</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {load.halfYears.map((half) => (
-                    <tr key={half.halfYear}>
-                      <th scope="row">{formatNumber(half.halfYear)}. Halbjahr</th>
-                      <td>{formatNumber(half.weeks)}</td>
-                      <td>{half.averageIndependent.toLocaleString('de-DE', { maximumFractionDigits: 1 })}</td>
-                      <td>{formatNumber(half.maxIndependent)}</td>
+              <div className="tabelle__rollbereich">
+                <table className="tabelle">
+                  <caption className="nur-lesbar">Selbstständiger Unterricht je Halbjahr</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Ausbildungshalbjahr</th>
+                      <th scope="col">Erfasste Wochen</th>
+                      <th scope="col">Selbstständiger Unterricht im Durchschnitt</th>
+                      <th scope="col">Höchstwert</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {load.halfYears.map((half) => (
+                      <tr key={half.halfYear}>
+                        <th scope="row">{formatNumber(half.halfYear)}. Halbjahr</th>
+                        <td>{formatNumber(half.weeks)}</td>
+                        <td>{half.averageIndependent.toLocaleString('de-DE', { maximumFractionDigits: 1 })}</td>
+                        <td>{formatNumber(half.maxIndependent)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </>
         ) : (
@@ -185,25 +191,27 @@ export function Druckansicht() {
               {formatNumber(seminar.count)} Veranstaltungen
               {seminar.required ? ` von mindestens ${formatNumber(seminar.required)} Stunden` : ''}.
             </p>
-            <table className="tabelle">
-              <caption className="nur-lesbar">Ausbildungsstunden nach Art</caption>
-              <thead>
-                <tr>
-                  <th scope="col">Art</th>
-                  <th scope="col">Termine</th>
-                  <th scope="col">Stunden</th>
-                </tr>
-              </thead>
-              <tbody>
-                {seminar.byKind.map((entry) => (
-                  <tr key={entry.kind}>
-                    <th scope="row">{entry.kind}</th>
-                    <td>{formatNumber(entry.count)}</td>
-                    <td>{entry.hours.toLocaleString('de-DE', { maximumFractionDigits: 1 })}</td>
+            <div className="tabelle__rollbereich">
+              <table className="tabelle">
+                <caption className="nur-lesbar">Ausbildungsstunden nach Art</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Art</th>
+                    <th scope="col">Termine</th>
+                    <th scope="col">Stunden</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {seminar.byKind.map((entry) => (
+                    <tr key={entry.kind}>
+                      <th scope="row">{entry.kind}</th>
+                      <td>{formatNumber(entry.count)}</td>
+                      <td>{entry.hours.toLocaleString('de-DE', { maximumFractionDigits: 1 })}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </>
         ) : (
           <p className="klein gedaempft">Noch keine Veranstaltungen erfasst.</p>
@@ -212,54 +220,58 @@ export function Druckansicht() {
         {app.documents.length > 0 && (
           <>
             <h2>Unterlagen</h2>
-            <table className="tabelle">
-              <caption className="nur-lesbar">Unterlagen und Formulare</caption>
-              <thead>
-                <tr>
-                  <th scope="col">Unterlage</th>
-                  <th scope="col">Stand</th>
-                  <th scope="col">Datum</th>
-                </tr>
-              </thead>
-              <tbody>
-                {app.documents.map((record) => (
-                  <tr key={record.id}>
-                    <th scope="row">
-                      {record.code ? `${record.code} – ` : ''}
-                      {record.title}
-                    </th>
-                    <td>{record.status}</td>
-                    <td>{record.date ? formatDate(record.date) : '–'}</td>
+            <div className="tabelle__rollbereich">
+              <table className="tabelle">
+                <caption className="nur-lesbar">Unterlagen und Formulare</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Unterlage</th>
+                    <th scope="col">Stand</th>
+                    <th scope="col">Datum</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {app.documents.map((record) => (
+                    <tr key={record.id}>
+                      <th scope="row">
+                        {record.code ? `${record.code} – ` : ''}
+                        {record.title}
+                      </th>
+                      <td>{record.status}</td>
+                      <td>{record.date ? formatDate(record.date) : '–'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </>
         )}
 
         {exam.deadlines.length > 0 && (
           <>
             <h2>Prüfungsfahrplan</h2>
-            <table className="tabelle">
-              <caption className="nur-lesbar">Fristen der Staatsprüfung</caption>
-              <thead>
-                <tr>
-                  <th scope="col">Datum</th>
-                  <th scope="col">Frist</th>
-                </tr>
-              </thead>
-              <tbody>
-                {exam.deadlines.map((deadline) => (
-                  <tr key={deadline.id}>
-                    <td style={{ whiteSpace: 'nowrap' }}>
-                      {formatDate(deadline.date)}
-                      {deadline.time ? ` bis ${deadline.time} Uhr` : ''}
-                    </td>
-                    <th scope="row">{deadline.title}</th>
+            <div className="tabelle__rollbereich">
+              <table className="tabelle">
+                <caption className="nur-lesbar">Fristen der Staatsprüfung</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Datum</th>
+                    <th scope="col">Frist</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {exam.deadlines.map((deadline) => (
+                    <tr key={deadline.id}>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        {formatDate(deadline.date)}
+                        {deadline.time ? ` bis ${deadline.time} Uhr` : ''}
+                      </td>
+                      <th scope="row">{deadline.title}</th>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </>
         )}
 
