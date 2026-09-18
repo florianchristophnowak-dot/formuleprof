@@ -4,7 +4,17 @@
  * IndexedDB.
  */
 
-export const STORE_NAMES = ['meta', 'templates', 'milestones', 'goals', 'reflections'] as const;
+export const STORE_NAMES = [
+  'meta',
+  'templates',
+  'milestones',
+  'goals',
+  'reflections',
+  'unterrichtswochen',
+  'ausbildungsstunden',
+  'unterlagen',
+  'kontakte',
+] as const;
 export type StoreName = (typeof STORE_NAMES)[number];
 
 export interface StorageAdapter {
@@ -67,7 +77,11 @@ export class MemoryStorageAdapter implements StorageAdapter {
 }
 
 const DB_NAME = 'formuleprof';
-const DB_VERSION = 1;
+/**
+ * Version 2 ergänzt die Bereiche des Wegweisers. Fehlende Bereiche werden
+ * beim Öffnen angelegt; vorhandene Daten bleiben unverändert.
+ */
+const DB_VERSION = 2;
 
 /** Dauerhafte lokale Speicherung in IndexedDB – ohne externe Abhängigkeit. */
 export class IndexedDbStorageAdapter implements StorageAdapter {

@@ -5,7 +5,7 @@
 import { addByUnit, fromIso, toIso } from '../domain/dates';
 import { effectiveEnd, effectiveStart } from '../domain/schedule';
 import { APP_NAME, APP_VERSION } from '../domain/types';
-import type { MilestoneInstance } from '../domain/types';
+import type { ExamDeadline, MilestoneInstance } from '../domain/types';
 
 function escapeText(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/;/g, '\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
@@ -57,6 +57,43 @@ export function buildIcs(milestones: MilestoneInstance[], now: Date = new Date()
       fold(`SUMMARY:${escapeText(milestone.title)}`),
       fold(`DESCRIPTION:${escapeText(description)}`),
       fold(`CATEGORIES:${escapeText(milestone.category)}`),
+      'END:VEVENT',
+    );
+  }
+
+  lines.push('END:VCALENDAR');
+  return `${lines.join('\r\n')}\r\n`;
+}
+
+/** Fristen des Prüfungsfahrplans als Kalendereinträge. */
+export function buildDeadlineIcs(deadlines: ExamDeadline[], now: Date = new Date()): string {
+  const stamp = `${now.toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`;
+  const lines: string[] = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    `PRODID:-//${APP_NAME}//${APP_VERSION}//DE`,
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+  ];
+
+  for (const deadline of deadlines) {
+    const end = toIso(addByUnit(fromIso(deadline.date), 1, 'Tage'));
+    const description = [
+      deadline.description,
+      deadline.time ? `Uhrzeit: ${deadline.time}` : '',
+      deadline.source,
+    ]
+      .filter((part) => part && part.trim().length > 0)
+      .join('\n\n');
+    lines.push(
+      'BEGIN:VEVENT',
+      `UID:frist-${deadline.id}@formuleprof.local`,
+      `DTSTAMP:${stamp}`,
+      `DTSTART;VALUE=DATE:${compactDate(deadline.date)}`,
+      `DTEND;VALUE=DATE:${compactDate(end)}`,
+      fold(`SUMMARY:${escapeText(deadline.title)}`),
+      fold(`DESCRIPTION:${escapeText(description)}`),
+      'CATEGORIES:Prüfung',
       'END:VEVENT',
     );
   }

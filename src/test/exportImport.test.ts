@@ -45,6 +45,58 @@ function snapshot(): AppSnapshot {
       },
     ],
     reflections: [reflection],
+    teachingWeeks: [
+      {
+        id: 'woche-2026-08-31',
+        weekStart: '2026-08-31',
+        hospitation: 7,
+        guided: 4,
+        independent: 4,
+        updatedAt: FIXED_NOW.toISOString(),
+      },
+    ],
+    seminarRecords: [
+      {
+        id: 'stunden-1',
+        date: '2026-09-02',
+        kind: 'Fachseminar',
+        title: 'Fachseminar Deutsch',
+        hours: 4,
+        updatedAt: FIXED_NOW.toISOString(),
+      },
+    ],
+    documents: [
+      {
+        id: 'unterlage-1',
+        title: 'Niederschrift der Lehrprobe',
+        status: 'benötigt',
+        updatedAt: FIXED_NOW.toISOString(),
+      },
+    ],
+    contacts: [
+      {
+        id: 'kontakt-1',
+        name: 'Fachleitung Deutsch',
+        role: 'Fachleitung',
+        subject: 'Deutsch',
+        updatedAt: FIXED_NOW.toISOString(),
+      },
+    ],
+    examPlan: {
+      id: 'pruefungsplan',
+      mode: 'zusammen',
+      firstDay: '2027-06-01',
+      secondDay: '2027-06-08',
+      updatedAt: FIXED_NOW.toISOString(),
+    },
+    grades: {
+      id: 'noten',
+      preliminary: 12,
+      teachingSamples: [],
+      practical: [{ id: 'plp-1', label: 'Prüfungslehrprobe Deutsch', points: 11 }],
+      oral: [],
+      updatedAt: FIXED_NOW.toISOString(),
+    },
     settings: { ...DEFAULT_SETTINGS, includeReflectionsInBackup: true },
   };
 }
@@ -60,7 +112,39 @@ describe('Sicherung und Wiederherstellung', () => {
     expect(restored.milestones).toEqual(original.milestones);
     expect(restored.goals).toEqual(original.goals);
     expect(restored.reflections).toEqual(original.reflections);
+    expect(restored.teachingWeeks).toEqual(original.teachingWeeks);
+    expect(restored.seminarRecords).toEqual(original.seminarRecords);
+    expect(restored.documents).toEqual(original.documents);
+    expect(restored.contacts).toEqual(original.contacts);
+    expect(restored.examPlan).toEqual(original.examPlan);
+    expect(restored.grades).toEqual(original.grades);
     expect(restored.settings).toEqual(original.settings);
+  });
+
+  it('liest Sicherungen der Schemaversion 1 und legt die Bereiche des Wegweisers leer an', () => {
+    const original = snapshot();
+    const backup = buildBackup(original, { includeReflections: false }, FIXED_NOW);
+    // Sicherung einer früheren Version: ohne die Bereiche des Wegweisers.
+    const {
+      teachingWeeks: _w,
+      seminarRecords: _s,
+      documents: _d,
+      contacts: _k,
+      examPlan: _p,
+      grades: _n,
+      ...alt
+    } = backup.data;
+    const restored = parseBackup(
+      toJsonString({ ...backup, schemaVersion: 1, appVersion: '0.1.0', data: alt }),
+    );
+
+    expect(restored.teachingWeeks).toEqual([]);
+    expect(restored.seminarRecords).toEqual([]);
+    expect(restored.documents).toEqual([]);
+    expect(restored.contacts).toEqual([]);
+    expect(restored.examPlan).toBeNull();
+    expect(restored.grades).toBeNull();
+    expect(restored.milestones).toHaveLength(original.milestones.length);
   });
 
   it('schliesst Reflexionen aus, wenn sie nicht ausdrücklich einbezogen werden', () => {
@@ -73,8 +157,8 @@ describe('Sicherung und Wiederherstellung', () => {
   it('schreibt Version und Art in die Datei', () => {
     const backup = buildBackup(snapshot(), { includeReflections: false }, FIXED_NOW);
     expect(backup.app).toBe('FormuleProf');
-    expect(backup.schemaVersion).toBe(1);
-    expect(backup.appVersion).toBe('0.1.0');
+    expect(backup.schemaVersion).toBe(2);
+    expect(backup.appVersion).toBe('0.2.0');
     expect(backup.kind).toBe('sicherung');
   });
 
@@ -137,7 +221,13 @@ describe('Streckendatei (Austausch mit Carnet de formation)', () => {
     expect(json).not.toContain('"reflections"');
     expect(json).not.toContain('"answers"');
     expect(json).not.toContain('"triedOut"');
-    expect(Object.keys(JSON.parse(json).data)).not.toContain('reflections');
+    expect(json).not.toContain('"grades"');
+    expect(json).not.toContain('"teachingWeeks"');
+    expect(json).not.toContain('"seminarRecords"');
+    const keys = Object.keys(JSON.parse(json).data);
+    expect(keys).not.toContain('reflections');
+    expect(keys).not.toContain('grades');
+    expect(keys).not.toContain('teachingWeeks');
   });
 
   it('liest eine Streckendatei und übernimmt Termine als vereinbart', () => {
@@ -181,6 +271,12 @@ describe('Lokale Speicherung', () => {
     await repository.saveMilestones(data.milestones);
     await repository.saveGoals(data.goals);
     await repository.saveReflection(data.reflections[0]!);
+    await repository.saveTeachingWeek(data.teachingWeeks[0]!);
+    await repository.saveSeminarRecord(data.seminarRecords[0]!);
+    await repository.saveDocument(data.documents[0]!);
+    await repository.saveContact(data.contacts[0]!);
+    await repository.saveExamPlan(data.examPlan!);
+    await repository.saveGrades(data.grades!);
     await repository.saveSettings(data.settings);
 
     // Neue Repository-Instanz simuliert einen Neustart der App.
@@ -189,6 +285,12 @@ describe('Lokale Speicherung', () => {
     expect(restored.milestones).toHaveLength(data.milestones.length);
     expect(restored.goals).toHaveLength(1);
     expect(restored.reflections).toHaveLength(1);
+    expect(restored.teachingWeeks).toHaveLength(1);
+    expect(restored.seminarRecords).toHaveLength(1);
+    expect(restored.documents).toHaveLength(1);
+    expect(restored.contacts).toHaveLength(1);
+    expect(restored.examPlan?.mode).toBe('zusammen');
+    expect(restored.grades?.preliminary).toBe(12);
     expect(restored.templates.length).toBeGreaterThan(0);
   });
 

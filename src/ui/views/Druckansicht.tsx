@@ -4,6 +4,10 @@ import { Printer } from 'lucide-react';
 import { useApp } from '../../state/AppContext';
 import { effectiveEnd, effectiveStart, groupByPhase, phaseBoundaries, trackStateOf } from '../../domain/schedule';
 import { formatDate, formatNumber, formatRange, trainingEndDate } from '../../domain/dates';
+import { summarizeTeachingLoad } from '../../domain/teachingLoad';
+import { summarizeSeminarHours } from '../../domain/seminarHours';
+import { summarizeExamPlan } from '../../domain/examDeadlines';
+import { computeFinalGrade, formatPoints } from '../../domain/grades';
 import { APP_NAME, APP_SUBTITLE, APP_VERSION } from '../../domain/types';
 
 export function Druckansicht() {
@@ -21,6 +25,27 @@ export function Druckansicht() {
       milestones: grouped.get(boundary.phase.id) ?? [],
     }));
   }, [template, profile, app.milestones]);
+
+  const load = useMemo(
+    () =>
+      profile ? summarizeTeachingLoad(template?.teachingLoad, profile, app.teachingWeeks, app.today) : null,
+    [profile, template, app.teachingWeeks, app.today],
+  );
+
+  const seminar = useMemo(
+    () =>
+      profile
+        ? summarizeSeminarHours(app.seminarRecords, template?.seminarRequirements, profile, app.today)
+        : null,
+    [profile, template, app.seminarRecords, app.today],
+  );
+
+  const exam = useMemo(
+    () => summarizeExamPlan(app.examPlan, template?.examDeadlines, app.today),
+    [app.examPlan, template, app.today],
+  );
+
+  const grades = useMemo(() => computeFinalGrade(app.grades, template?.gradeModel), [app.grades, template]);
 
   if (!profile || !template) return null;
 
@@ -113,6 +138,141 @@ export function Druckansicht() {
           </section>
         ))}
 
+        {/* Wegweiser: Belege für Ausbildungsgespräche und Beurteilungen. */}
+        <h2>Unterrichtseinsatz</h2>
+        {load && load.weeksWithEntry > 0 ? (
+          <>
+            <p className="klein">
+              {formatNumber(load.weeksWithEntry)} erfasste Wochen. Summen über den erfassten Zeitraum:
+              Hospitation {formatNumber(load.totals.hospitation)}, angeleiteter Unterricht{' '}
+              {formatNumber(load.totals.guided)}, selbstständiger Unterricht{' '}
+              {formatNumber(load.totals.independent)} Wochenstunden.
+              {load.currentRow?.stage ? ` Aktueller Abschnitt: ${load.currentRow.stage.title}.` : ''}
+            </p>
+            {load.halfYears.length > 0 && (
+              <table className="tabelle">
+                <caption className="nur-lesbar">Selbstständiger Unterricht je Halbjahr</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Ausbildungshalbjahr</th>
+                    <th scope="col">Erfasste Wochen</th>
+                    <th scope="col">Selbstständiger Unterricht im Durchschnitt</th>
+                    <th scope="col">Höchstwert</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {load.halfYears.map((half) => (
+                    <tr key={half.halfYear}>
+                      <th scope="row">{formatNumber(half.halfYear)}. Halbjahr</th>
+                      <td>{formatNumber(half.weeks)}</td>
+                      <td>{half.averageIndependent.toLocaleString('de-DE', { maximumFractionDigits: 1 })}</td>
+                      <td>{formatNumber(half.maxIndependent)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </>
+        ) : (
+          <p className="klein gedaempft">Noch keine Wochen erfasst.</p>
+        )}
+
+        <h2>Ausbildungsstunden am Studienseminar</h2>
+        {seminar && seminar.count > 0 ? (
+          <>
+            <p className="klein">
+              {seminar.total.toLocaleString('de-DE', { maximumFractionDigits: 1 })} Stunden aus{' '}
+              {formatNumber(seminar.count)} Veranstaltungen
+              {seminar.required ? ` von mindestens ${formatNumber(seminar.required)} Stunden` : ''}.
+            </p>
+            <table className="tabelle">
+              <caption className="nur-lesbar">Ausbildungsstunden nach Art</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Art</th>
+                  <th scope="col">Termine</th>
+                  <th scope="col">Stunden</th>
+                </tr>
+              </thead>
+              <tbody>
+                {seminar.byKind.map((entry) => (
+                  <tr key={entry.kind}>
+                    <th scope="row">{entry.kind}</th>
+                    <td>{formatNumber(entry.count)}</td>
+                    <td>{entry.hours.toLocaleString('de-DE', { maximumFractionDigits: 1 })}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        ) : (
+          <p className="klein gedaempft">Noch keine Veranstaltungen erfasst.</p>
+        )}
+
+        {app.documents.length > 0 && (
+          <>
+            <h2>Unterlagen</h2>
+            <table className="tabelle">
+              <caption className="nur-lesbar">Unterlagen und Formulare</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Unterlage</th>
+                  <th scope="col">Stand</th>
+                  <th scope="col">Datum</th>
+                </tr>
+              </thead>
+              <tbody>
+                {app.documents.map((record) => (
+                  <tr key={record.id}>
+                    <th scope="row">
+                      {record.code ? `${record.code} – ` : ''}
+                      {record.title}
+                    </th>
+                    <td>{record.status}</td>
+                    <td>{record.date ? formatDate(record.date) : '–'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
+
+        {exam.deadlines.length > 0 && (
+          <>
+            <h2>Prüfungsfahrplan</h2>
+            <table className="tabelle">
+              <caption className="nur-lesbar">Fristen der Staatsprüfung</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Datum</th>
+                  <th scope="col">Frist</th>
+                </tr>
+              </thead>
+              <tbody>
+                {exam.deadlines.map((deadline) => (
+                  <tr key={deadline.id}>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      {formatDate(deadline.date)}
+                      {deadline.time ? ` bis ${deadline.time} Uhr` : ''}
+                    </td>
+                    <th scope="row">{deadline.title}</th>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
+
+        {app.settings.printGrades && grades.complete && (
+          <>
+            <h2>Notenübersicht</h2>
+            <p className="klein">
+              Gesamtpunktzahl {formatNumber(grades.points ?? 0)} Punkte ({grades.gradeLabel}), ungerundet{' '}
+              {formatPoints(grades.raw ?? 0)}. Verbindlich ist die Festsetzung durch das Prüfungsamt.
+            </p>
+          </>
+        )}
+
         <p className="klein gedaempft" style={{ marginTop: 24 }}>
           Grundlage: {template.title} ({template.version}, {template.validAsOf}).
           {template.demo &&
@@ -122,6 +282,9 @@ export function Druckansicht() {
         </p>
         <p className="klein gedaempft">
           Persönliche Reflexionen aus dem Boxenstopp sind in dieser Ansicht bewusst nicht enthalten.
+          {app.settings.printGrades
+            ? ' Die Notenübersicht ist enthalten, weil du das in den Einstellungen ausgewählt hast.'
+            : ' Die Notenübersicht ist nicht enthalten; sie lässt sich in den Einstellungen ausdrücklich hinzunehmen.'}
         </p>
       </div>
     </div>

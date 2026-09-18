@@ -6,6 +6,7 @@
 import { useMemo, useState } from 'react';
 import { Copy, Download, Plus, Save, Trash2, Upload, Wrench } from 'lucide-react';
 import { Card, Notice, downloadFile } from '../components/common';
+import { WegweiserEditor } from './baukasten/WegweiserEditor';
 import { useApp } from '../../state/AppContext';
 import { buildTemplateExport, exportFileName, parseTemplateFile, toJsonString } from '../../io/exportImport';
 import { DEFAULT_CHALLENGE_RULES } from '../../domain/challenges';
@@ -261,6 +262,7 @@ export function Streckenbaukasten() {
 
       <PhaseEditor template={template} onChange={edit} />
       <MilestoneEditor template={template} onChange={edit} />
+      <WegweiserEditor template={template} onChange={edit} />
       <ChallengeRuleEditor template={template} onChange={edit} />
 
       <div className="reihe">

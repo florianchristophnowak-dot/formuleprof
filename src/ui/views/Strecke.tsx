@@ -5,9 +5,10 @@
  * eigenständige, senkrechte Etappenansicht (keine verkleinerte Kopie).
  */
 import { useMemo, useState } from 'react';
-import { CircleDot, Flag, FlagTriangleRight, Printer, Route as RouteIcon } from 'lucide-react';
+import { CircleDot, Flag, FlagTriangleRight, Plus, Printer, Route as RouteIcon } from 'lucide-react';
 import { Card, StateBadge } from '../components/common';
 import { MilestoneDialog } from '../components/MilestoneDialog';
+import { OwnMilestoneDialog } from '../components/OwnMilestoneDialog';
 import { useApp } from '../../state/AppContext';
 import { effectiveEnd, effectiveStart, groupByPhase, phaseAtDate, phaseBoundaries, trackStateOf } from '../../domain/schedule';
 import { formatDate, formatNumber, formatRange, trainingEndDate } from '../../domain/dates';
@@ -26,7 +27,8 @@ interface PhaseGroup {
 export function Strecke({ navigate }: { navigate: (route: Route) => void }) {
   const app = useApp();
   const [selected, setSelected] = useState<MilestoneInstance | null>(null);
-  const [filter, setFilter] = useState<'alle' | 'offen' | 'verbindlich'>('alle');
+  const [addingOwn, setAddingOwn] = useState(false);
+  const [filter, setFilter] = useState<'alle' | 'offen' | 'verbindlich' | 'eigene'>('alle');
 
   const template = app.activeTemplate;
   const profile = app.profile;
@@ -53,6 +55,7 @@ export function Strecke({ navigate }: { navigate: (route: Route) => void }) {
   const visible = (milestone: MilestoneInstance): boolean => {
     if (filter === 'offen') return milestone.status !== 'erledigt' && milestone.status !== 'entfällt';
     if (filter === 'verbindlich') return milestone.mandatory;
+    if (filter === 'eigene') return milestone.custom === true || milestone.agreed === true;
     return true;
   };
 
@@ -80,6 +83,9 @@ export function Strecke({ navigate }: { navigate: (route: Route) => void }) {
             {formatNumber(profile.durationMonths)} Monate · {template.title}
           </p>
         </div>
+        <button type="button" className="knopf knopf--klein nicht-drucken" onClick={() => setAddingOwn(true)}>
+          <Plus size={15} aria-hidden="true" /> Eigenen Termin
+        </button>
         <button type="button" className="knopf knopf--klein nicht-drucken" onClick={() => navigate('druck')}>
           <Printer size={15} aria-hidden="true" /> Druckansicht
         </button>
@@ -88,7 +94,7 @@ export function Strecke({ navigate }: { navigate: (route: Route) => void }) {
       <fieldset className="feldgruppe nicht-drucken" style={{ marginBottom: 0 }}>
         <legend>Anzeige</legend>
         <div className="reihe">
-          {(['alle', 'offen', 'verbindlich'] as const).map((option) => (
+          {(['alle', 'offen', 'verbindlich', 'eigene'] as const).map((option) => (
             <label className="wahl" key={option} style={{ paddingRight: 12 }}>
               <input
                 type="radio"
@@ -98,7 +104,13 @@ export function Strecke({ navigate }: { navigate: (route: Route) => void }) {
                 onChange={() => setFilter(option)}
               />
               <span>
-                {option === 'alle' ? 'Alle Meilensteine' : option === 'offen' ? 'Nur offene' : 'Nur verbindliche'}
+                {option === 'alle'
+                  ? 'Alle Meilensteine'
+                  : option === 'offen'
+                    ? 'Nur offene'
+                    : option === 'verbindlich'
+                      ? 'Nur verbindliche'
+                      : 'Nur eigene und vereinbarte'}
               </span>
             </label>
           ))}
@@ -183,6 +195,8 @@ export function Strecke({ navigate }: { navigate: (route: Route) => void }) {
           ))}
         </div>
       </Card>
+
+      {addingOwn && <OwnMilestoneDialog onClose={() => setAddingOwn(false)} />}
 
       {selected && (
         <MilestoneDialog

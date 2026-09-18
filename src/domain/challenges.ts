@@ -5,15 +5,25 @@
  * Bewertung, keine Wahrscheinlichkeitswerte. Jeder Hinweis besteht aus
  * „Mögliche Herausforderung“, „Warum du das siehst“ und „Empfohlene Reaktion“.
  */
-import { daysBetween, formatDate, formatNumber } from './dates';
+import { daysBetween, formatDate, formatNumber, mondayOf } from './dates';
 import { effectiveEnd, effectiveStart } from './schedule';
+import { summarizeTeachingLoad } from './teachingLoad';
+import { summarizeSeminarHours } from './seminarHours';
+import { summarizeDocuments } from './documents';
+import { examPlanGaps, summarizeExamPlan } from './examDeadlines';
 import type {
   ChallengeHint,
   ChallengeRule,
   DevelopmentGoal,
+  DocumentRecord,
+  ExamPlan,
   IsoDate,
   MilestoneInstance,
   ReflectionEntry,
+  SeminarRecord,
+  TeachingWeekEntry,
+  TrainingProfile,
+  TrainingTemplate,
 } from './types';
 
 export interface ChallengeInput {
@@ -22,6 +32,13 @@ export interface ChallengeInput {
   reflections: ReflectionEntry[];
   todayIso: IsoDate;
   rules: ChallengeRule[];
+  /* Angaben des Wegweisers. Fehlen sie, bleiben die betreffenden Regeln still. */
+  profile?: TrainingProfile | null;
+  template?: TrainingTemplate | null;
+  teachingWeeks?: TeachingWeekEntry[];
+  seminarRecords?: SeminarRecord[];
+  documents?: DocumentRecord[];
+  examPlan?: ExamPlan | null;
 }
 
 /** Standardregeln, die jeder Vorlage mitgegeben werden. */
@@ -85,6 +102,45 @@ export const DEFAULT_CHALLENGE_RULES: ChallengeRule[] = [
     enabled: true,
     horizonDays: 60,
   },
+  {
+    id: 'regel-einsatz-fehlt',
+    kind: 'unterrichtseinsatzFehlt',
+    title: 'Unterrichtseinsatz mehrerer Wochen nicht erfasst',
+    enabled: true,
+    horizonDays: 0,
+    params: { wochen: 3 },
+  },
+  {
+    id: 'regel-einsatz-abweichung',
+    kind: 'unterrichtseinsatzAbweichung',
+    title: 'Unterrichtseinsatz weicht vom Soll-Korridor ab',
+    enabled: true,
+    horizonDays: 0,
+    params: { wochen: 6 },
+  },
+  {
+    id: 'regel-ausbildungsstunden',
+    kind: 'ausbildungsstundenRueckstand',
+    title: 'Nachweis der Ausbildungsstunden bleibt hinter dem Zeitanteil',
+    enabled: true,
+    horizonDays: 0,
+    params: { toleranzStunden: 15 },
+  },
+  {
+    id: 'regel-unterlagen',
+    kind: 'unterlagenOffen',
+    title: 'Unterlagen für einen anstehenden Termin fehlen',
+    enabled: true,
+    horizonDays: 45,
+  },
+  {
+    id: 'regel-pruefungsplan',
+    kind: 'pruefungsplanUnvollstaendig',
+    title: 'Prüfungsfahrplan ist noch unvollständig',
+    enabled: true,
+    horizonDays: 120,
+    params: { fristTage: 21 },
+  },
 ];
 
 /** Wertet alle aktiven Regeln aus und liefert unterstützend formulierte Hinweise. */
@@ -116,6 +172,21 @@ export function detectChallenges(input: ChallengeInput): ChallengeHint[] {
         break;
       case 'voraussetzungOffen':
         hints.push(...rulePrerequisiteOpen(rule, input));
+        break;
+      case 'unterrichtseinsatzFehlt':
+        hints.push(...ruleTeachingLoadMissing(rule, input));
+        break;
+      case 'unterrichtseinsatzAbweichung':
+        hints.push(...ruleTeachingLoadDeviation(rule, input));
+        break;
+      case 'ausbildungsstundenRueckstand':
+        hints.push(...ruleSeminarHoursBehind(rule, input));
+        break;
+      case 'unterlagenOffen':
+        hints.push(...ruleDocumentsOpen(rule, input));
+        break;
+      case 'pruefungsplanUnvollstaendig':
+        hints.push(...ruleExamPlanIncomplete(rule, input));
         break;
     }
   }
@@ -358,6 +429,205 @@ function rulePrerequisiteOpen(rule: ChallengeRule, input: ChallengeInput): Chall
       relatedMilestoneIds: [milestone.id, ...open.map((p) => p.id)],
       anchorDate: effectiveStart(milestone),
     }));
+}
+
+/* ------------------- Regeln auf Grundlage des Wegweisers ------------------- */
+
+/** Der Unterrichtseinsatz mehrerer vergangener Wochen ist nicht erfasst. */
+function ruleTeachingLoadMissing(rule: ChallengeRule, input: ChallengeInput): ChallengeHint[] {
+  if (!input.profile) return [];
+  const limit = rule.params?.wochen ?? 3;
+  const summary = summarizeTeachingLoad(
+    input.template?.teachingLoad,
+    input.profile,
+    input.teachingWeeks ?? [],
+    input.todayIso,
+  );
+  if (!summary.applies || summary.rows.length === 0) return [];
+  if (summary.weeksWithoutEntry < limit) return [];
+
+  return [
+    {
+      id: `${rule.id}:einsatz`,
+      ruleId: rule.id,
+      kind: rule.kind,
+      challenge: 'Der Unterrichtseinsatz ist über mehrere Wochen nicht festgehalten.',
+      why: `Für ${formatNumber(summary.weeksWithoutEntry)} vergangene Wochen fehlen Angaben zu Hospitation, angeleitetem und selbstständigem Unterricht.${
+        summary.lastEntry ? ` Der letzte Eintrag betrifft die Woche ab ${formatDate(mondayOf(summary.lastEntry.weekStart))}.` : ''
+      }`,
+      action:
+        'Trage die Wochenstunden im Wegweiser nach. Der Verlauf ist die Grundlage für Gespräche über den Umfang deines Einsatzes.',
+      relatedMilestoneIds: [],
+      anchorDate: summary.lastEntry ? mondayOf(summary.lastEntry.weekStart) : undefined,
+    },
+  ];
+}
+
+/** Der erfasste Einsatz weicht vom Soll-Korridor der Etappe ab. */
+function ruleTeachingLoadDeviation(rule: ChallengeRule, input: ChallengeInput): ChallengeHint[] {
+  if (!input.profile) return [];
+  const weeks = rule.params?.wochen ?? 6;
+  const summary = summarizeTeachingLoad(
+    input.template?.teachingLoad,
+    input.profile,
+    input.teachingWeeks ?? [],
+    input.todayIso,
+  );
+  if (!summary.applies) return [];
+
+  const recent = summary.rows.filter((row) => row.entry).slice(-weeks);
+  const deviating = recent.filter((row) => row.deviations.length > 0);
+  const hints: ChallengeHint[] = [];
+
+  if (deviating.length > 0) {
+    const latest = deviating[deviating.length - 1]!;
+    hints.push({
+      id: `${rule.id}:${latest.weekStart}`,
+      ruleId: rule.id,
+      kind: rule.kind,
+      challenge: 'Dein Unterrichtseinsatz weicht vom vorgesehenen Korridor ab.',
+      why: `In ${formatNumber(deviating.length)} der letzten ${formatNumber(
+        recent.length,
+      )} erfassten Wochen gibt es Abweichungen. Zuletzt in der Woche ab ${formatDate(latest.weekStart)}: ${latest.deviations.join(' ')}`,
+      action:
+        'Sprich den Einsatz mit Schulleitung und Fachleitung an. Die Korridore der Vorlage helfen, den Umfang sachlich zu begründen.',
+      relatedMilestoneIds: [],
+      anchorDate: latest.weekStart,
+    });
+  }
+
+  for (const half of summary.halfYears) {
+    if (half.deviations.length === 0) continue;
+    hints.push({
+      id: `${rule.id}:halbjahr-${half.halfYear}`,
+      ruleId: rule.id,
+      kind: rule.kind,
+      challenge: 'Der selbstständige Unterricht liegt über dem vorgesehenen Umfang.',
+      why: `${formatNumber(half.halfYear)}. Ausbildungshalbjahr, ${formatNumber(half.weeks)} erfasste Wochen: ${half.deviations.join(' ')}`,
+      action:
+        'Halte den Umfang schriftlich fest und kläre frühzeitig, wie er sich auf den vorgesehenen Durchschnitt zurückführen lässt.',
+      relatedMilestoneIds: [],
+    });
+  }
+
+  return hints;
+}
+
+/** Der Nachweis der Ausbildungsstunden bleibt hinter dem Zeitanteil zurück. */
+function ruleSeminarHoursBehind(rule: ChallengeRule, input: ChallengeInput): ChallengeHint[] {
+  if (!input.profile) return [];
+  const tolerance = rule.params?.toleranzStunden ?? 15;
+  const summary = summarizeSeminarHours(
+    input.seminarRecords ?? [],
+    input.template?.seminarRequirements,
+    input.profile,
+    input.todayIso,
+  );
+  if (summary.required === null || summary.expectedByNow === null) return [];
+  if (summary.behindBy <= tolerance) return [];
+
+  return [
+    {
+      id: `${rule.id}:stunden`,
+      ruleId: rule.id,
+      kind: rule.kind,
+      challenge: 'Der Nachweis der Ausbildungsstunden ist lückenhaft.',
+      why: `Erfasst sind ${formatNumber(summary.total)} von mindestens ${formatNumber(
+        summary.required,
+      )} Stunden. Dem bisherigen Ausbildungszeitraum entspräche ein Umfang von etwa ${formatNumber(
+        summary.expectedByNow,
+      )} Stunden.`,
+      action:
+        'Trage fehlende Seminartage, Fachseminare und Beratungsgespräche nach. Diese Veranstaltungen haben Vorrang vor anderen Tätigkeiten.',
+      relatedMilestoneIds: [],
+    },
+  ];
+}
+
+/** Für einen anstehenden Termin fehlen Unterlagen aus dem Formularsatz. */
+function ruleDocumentsOpen(rule: ChallengeRule, input: ChallengeInput): ChallengeHint[] {
+  if (!input.template) return [];
+  const summary = summarizeDocuments(
+    input.template,
+    input.milestones,
+    input.documents ?? [],
+    input.todayIso,
+    rule.horizonDays,
+  );
+
+  const byMilestone = new Map<string, typeof summary.upcomingSuggestions>();
+  for (const suggestion of summary.upcomingSuggestions) {
+    const list = byMilestone.get(suggestion.milestoneId) ?? [];
+    list.push(suggestion);
+    byMilestone.set(suggestion.milestoneId, list);
+  }
+
+  return [...byMilestone.entries()].map(([milestoneId, suggestions]) => {
+    const first = suggestions[0]!;
+    return {
+      id: `${rule.id}:${milestoneId}`,
+      ruleId: rule.id,
+      kind: rule.kind,
+      challenge: 'Für einen anstehenden Termin fehlen Unterlagen in deinem Bestand.',
+      why: `Zu „${first.milestoneTitle}“ am ${formatDate(first.milestoneStart)} gehören laut Vorlage: ${suggestions
+        .map((suggestion) => (suggestion.code ? `${suggestion.code} – ${suggestion.title}` : suggestion.title))
+        .join(', ')}.`,
+      action: 'Übernimm die Formulare in den Wegweiser und halte fest, wer sie ausfüllt und wann sie vorliegen.',
+      relatedMilestoneIds: [milestoneId],
+      anchorDate: first.milestoneStart,
+    };
+  });
+}
+
+/** Die Staatsprüfung rückt näher, der eigene Prüfungsfahrplan ist unvollständig. */
+function ruleExamPlanIncomplete(rule: ChallengeRule, input: ChallengeInput): ChallengeHint[] {
+  const exams = input.milestones
+    .filter((m) => m.category === 'Prüfung' && m.status !== 'erledigt' && m.status !== 'entfällt')
+    .filter((m) => {
+      const days = daysBetween(input.todayIso, effectiveStart(m));
+      return days >= 0 && days <= rule.horizonDays;
+    })
+    .sort((a, b) => (effectiveStart(a) < effectiveStart(b) ? -1 : 1));
+
+  const summary = summarizeExamPlan(input.examPlan ?? null, input.template?.examDeadlines, input.todayIso);
+  const hints: ChallengeHint[] = [];
+
+  const gaps = examPlanGaps(input.examPlan ?? null, input.template?.examDeadlines).filter(
+    (gap) => !gap.startsWith('Die gewählte Vorlage'),
+  );
+  const nextExam = exams[0];
+  if (nextExam && gaps.length > 0) {
+    hints.push({
+      id: `${rule.id}:plan`,
+      ruleId: rule.id,
+      kind: rule.kind,
+      challenge: 'Der Prüfungsfahrplan ist noch nicht vollständig hinterlegt.',
+      why: `„${nextExam.title}“ liegt am ${formatDate(effectiveStart(nextExam))}. Offen ist: ${gaps.join(' ')}`,
+      action:
+        'Trage Ablaufform und Prüfungstage im Wegweiser ein. Daraus berechnet sich, wann Themenbekanntgabe und Entwurfsabgabe fällig sind.',
+      relatedMilestoneIds: [nextExam.id],
+      anchorDate: effectiveStart(nextExam),
+    });
+  }
+
+  const soon = rule.params?.fristTage ?? 21;
+  const nextDeadline = summary.nextDeadline;
+  if (nextDeadline && daysBetween(input.todayIso, nextDeadline.date) <= soon) {
+    hints.push({
+      id: `${rule.id}:frist-${nextDeadline.id}`,
+      ruleId: rule.id,
+      kind: rule.kind,
+      challenge: 'Eine Frist der Staatsprüfung steht bevor.',
+      why: `${nextDeadline.title}: ${formatDate(nextDeadline.date)}${
+        nextDeadline.time ? `, ${nextDeadline.time} Uhr` : ''
+      }. ${nextDeadline.description}`,
+      action: 'Plane die Vorbereitung rückwärts von dieser Frist und halte Puffer für die Abgabe frei.',
+      relatedMilestoneIds: [],
+      anchorDate: nextDeadline.date,
+    });
+  }
+
+  return hints;
 }
 
 function shiftDays(date: IsoDate, days: number): IsoDate {

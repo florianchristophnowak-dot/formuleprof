@@ -1,11 +1,12 @@
 /** Anwendungsgerüst: Navigation, Themenwahl und Seitenauswahl. */
 import { useEffect } from 'react';
-import { BookOpen, Gauge, Route as RouteIcon, Settings, Waypoints, Wrench } from 'lucide-react';
+import { BookOpen, Compass, Gauge, Route as RouteIcon, Settings, Waypoints, Wrench } from 'lucide-react';
 import { useApp } from './state/AppContext';
 import { href, useRoute } from './ui/router';
 import type { Route } from './ui/router';
 import { Cockpit } from './ui/views/Cockpit';
 import { Strecke } from './ui/views/Strecke';
+import { Wegweiser } from './ui/views/Wegweiser';
 import { Roadbook } from './ui/views/Roadbook';
 import { Boxenstopp } from './ui/views/Boxenstopp';
 import { Streckenbaukasten } from './ui/views/Streckenbaukasten';
@@ -22,6 +23,7 @@ import { APP_NAME, APP_SUBTITLE, APP_VERSION } from './domain/types';
 const NAVIGATION: { route: Route; label: string; shortLabel: string; icon: typeof Gauge }[] = [
   { route: 'cockpit', label: 'Cockpit', shortLabel: 'Cock\u00ADpit', icon: Gauge },
   { route: 'strecke', label: 'Strecke', shortLabel: 'Stre\u00ADcke', icon: RouteIcon },
+  { route: 'wegweiser', label: 'Wegweiser', shortLabel: 'Weg\u00ADweiser', icon: Compass },
   { route: 'roadbook', label: 'Roadbook', shortLabel: 'Road\u00ADbook', icon: BookOpen },
   { route: 'boxenstopp', label: 'Boxenstopp', shortLabel: 'Boxen\u00ADstopp', icon: Waypoints },
   { route: 'baukasten', label: 'Baukasten', shortLabel: 'Bau\u00ADkasten', icon: Wrench },
@@ -105,6 +107,7 @@ export function App() {
             {route === 'onboarding' && <Onboarding navigate={navigate} />}
             {!needsOnboarding && route === 'cockpit' && <Cockpit navigate={navigate} />}
             {!needsOnboarding && route === 'strecke' && <Strecke navigate={navigate} />}
+            {!needsOnboarding && route === 'wegweiser' && <Wegweiser />}
             {!needsOnboarding && route === 'roadbook' && <Roadbook />}
             {!needsOnboarding && route === 'boxenstopp' && <Boxenstopp />}
             {!needsOnboarding && route === 'baukasten' && <Streckenbaukasten />}

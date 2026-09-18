@@ -421,17 +421,19 @@ export function buildSchedule(
   }
 
   const applicableIds = new Set(applicable.map((d) => d.id));
+
+  // Selbst angelegte sowie individuell vereinbarte Termine ohne Entsprechung
+  // in der Vorlage bleiben erhalten; alle übrigen Termine einer abgewählten
+  // Vorlage entfallen.
+  const carried = existing.filter(
+    (m) => !applicableIds.has(m.definitionId) && (m.custom === true || m.agreed === true),
+  );
+  const carriedIds = new Set(carried.map((m) => m.id));
   const removed = existing
-    .filter((m) => !applicableIds.has(m.definitionId))
-    .filter((m) => m.templateId === template.id || !m.agreed)
+    .filter((m) => !applicableIds.has(m.definitionId) && !carriedIds.has(m.id))
     .map((m) => m.id);
 
-  // Individuell vereinbarte Termine ohne Entsprechung in der Vorlage bleiben
-  // erhalten; alle übrigen Termine einer abgewählten Vorlage entfallen.
-  const foreign = existing.filter(
-    (m) => m.templateId !== template.id && m.agreed && !applicableIds.has(m.definitionId),
-  );
-  milestones.push(...foreign);
+  milestones.push(...carried);
 
   milestones.sort(compareMilestones);
   return { milestones, changed, keptManual, removed };
@@ -445,6 +447,56 @@ function mergeChecklist(definition: MilestoneDefinition, previous: MilestoneInst
     label: item.label,
     done: done.get(item.id) ?? false,
   }));
+}
+
+/**
+ * Erzeugt einen selbst angelegten Termin. Er gehört nicht zur Vorlage und
+ * bleibt bei jeder Neuberechnung unverändert erhalten.
+ */
+export function createCustomMilestone(
+  input: {
+    title: string;
+    description?: string;
+    category: import('./types').MilestoneCategory;
+    start: IsoDate;
+    end?: IsoDate;
+    leadTimeDays?: number;
+    mandatory?: boolean;
+    agreed?: boolean;
+    notes?: string;
+    phaseId?: string;
+    templateId: string;
+  },
+  now: Date = new Date(),
+): MilestoneInstance {
+  const id = `eigen-${now.getTime().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const end = input.end && input.end > input.start ? input.end : input.start;
+  return {
+    id,
+    definitionId: id,
+    templateId: input.templateId,
+    title: input.title,
+    description: input.description ?? '',
+    category: input.category,
+    phaseId: input.phaseId ?? '',
+    computedStart: input.start,
+    computedEnd: end,
+    isWindow: end !== input.start,
+    manualStart: input.start,
+    manualEnd: end !== input.start ? end : undefined,
+    leadTimeDays: input.leadTimeDays ?? 7,
+    prerequisites: [],
+    status: 'offen',
+    notes: input.notes ?? '',
+    checklist: [],
+    help: '',
+    mandatory: input.mandatory ?? false,
+    major: false,
+    order: 900,
+    custom: true,
+    agreed: input.agreed ?? false,
+    updatedAt: now.toISOString(),
+  };
 }
 
 /** Der tatsächlich geltende Terminbeginn (manuell schlägt berechnet). */

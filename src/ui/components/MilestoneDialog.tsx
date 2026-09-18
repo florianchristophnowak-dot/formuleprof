@@ -1,11 +1,13 @@
 /** Detailansicht eines Meilensteins mit allen persönlichen Angaben. */
-import { useState } from 'react';
-import { CalendarDays, Download, Info, Link2, ListChecks, NotebookPen, Target } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { CalendarDays, Download, FileText, Info, Link2, ListChecks, NotebookPen, Plus, Target, Trash2 } from 'lucide-react';
 import { Dialog, StateBadge, downloadFile } from './common';
 import { useApp } from '../../state/AppContext';
 import { effectiveEnd, effectiveStart, trackStateOf } from '../../domain/schedule';
 import { daysBetween, formatCountdown, formatDate, formatRange } from '../../domain/dates';
+import { collectFormSuggestions, documentFromSuggestion } from '../../domain/documents';
 import { buildIcs, icsFileName } from '../../io/ics';
+import { hrefWithParam } from '../router';
 import type { MilestoneInstance, MilestoneStatus } from '../../domain/types';
 import { MILESTONE_STATUSES } from '../../domain/types';
 
@@ -18,7 +20,8 @@ export function MilestoneDialog({
   onClose: () => void;
   onSuggestPitStop?: (milestone: MilestoneInstance) => void;
 }) {
-  const { today, milestones, updateMilestone, changeMilestoneDate } = useApp();
+  const app = useApp();
+  const { today, milestones, updateMilestone, changeMilestoneDate } = app;
   const [dateDraft, setDateDraft] = useState(effectiveStart(milestone));
   const [dateInfo, setDateInfo] = useState<string | null>(null);
 
@@ -49,6 +52,22 @@ export function MilestoneDialog({
     setDateInfo('Der Termin folgt wieder der Terminregel der Vorlage.');
   };
 
+  // Unterlagen dieses Termins: eigener Bestand und Vorschläge der Vorlage.
+  const documents = useMemo(
+    () => app.documents.filter((record) => record.milestoneId === milestone.id),
+    [app.documents, milestone.id],
+  );
+  const suggestions = useMemo(
+    () =>
+      collectFormSuggestions(app.activeTemplate, [milestone]).filter(
+        (suggestion) =>
+          !documents.some((record) =>
+            suggestion.code && record.code ? record.code === suggestion.code : record.title === suggestion.title,
+          ),
+      ),
+    [app.activeTemplate, milestone, documents],
+  );
+
   return (
     <Dialog title={milestone.title} onClose={onClose}>
       <div className="reihe" style={{ marginBottom: 12 }}>
@@ -57,6 +76,7 @@ export function MilestoneDialog({
         {milestone.mandatory && <span className="marke">verbindlich</span>}
         {milestone.manualStart && <span className="marke">eigener Termin</span>}
         {milestone.agreed && <span className="marke">vereinbart</span>}
+        {milestone.custom && <span className="marke">selbst angelegt</span>}
       </div>
 
       <p>{milestone.description}</p>
@@ -158,6 +178,43 @@ export function MilestoneDialog({
         </div>
       )}
 
+      {(documents.length > 0 || suggestions.length > 0) && (
+        <fieldset className="feldgruppe">
+          <legend>
+            <FileText size={14} aria-hidden="true" /> Unterlagen
+          </legend>
+          {documents.length > 0 && (
+            <ul className="klein" style={{ margin: '0 0 8px', paddingLeft: 18 }}>
+              {documents.map((record) => (
+                <li key={record.id}>
+                  {record.code ? `${record.code} – ` : ''}
+                  {record.title} · {record.status}
+                </li>
+              ))}
+            </ul>
+          )}
+          {suggestions.map((suggestion) => (
+            <div className="reihe" key={suggestion.id} style={{ marginBottom: 6 }}>
+              <span className="klein" style={{ flex: 1 }}>
+                {suggestion.code ? `${suggestion.code} – ` : ''}
+                {suggestion.title}
+                {suggestion.responsible ? ` (${suggestion.responsible})` : ''}
+              </span>
+              <button
+                type="button"
+                className="knopf knopf--klein"
+                onClick={() => app.saveDocument(documentFromSuggestion(suggestion))}
+              >
+                <Plus size={13} aria-hidden="true" /> In den Wegweiser
+              </button>
+            </div>
+          ))}
+          <a className="klein" href={hrefWithParam('wegweiser', 'bereich', 'unterlagen')}>
+            Alle Unterlagen im Wegweiser
+          </a>
+        </fieldset>
+      )}
+
       <div className="feld">
         <label htmlFor={`notiz-${milestone.id}`}>
           <NotebookPen size={14} aria-hidden="true" /> Persönliche Notizen
@@ -213,6 +270,20 @@ export function MilestoneDialog({
         {onSuggestPitStop && isReflectionRelevant(milestone) && (
           <button type="button" className="knopf knopf--klein" onClick={() => onSuggestPitStop(milestone)}>
             Boxenstopp zu diesem Termin
+          </button>
+        )}
+        {milestone.custom && (
+          <button
+            type="button"
+            className="knopf knopf--klein knopf--gefahr"
+            onClick={async () => {
+              if (window.confirm(`Den selbst angelegten Termin „${milestone.title}“ löschen?`)) {
+                await app.removeMilestone(milestone.id);
+                onClose();
+              }
+            }}
+          >
+            <Trash2 size={14} aria-hidden="true" /> Eigenen Termin löschen
           </button>
         )}
       </div>
