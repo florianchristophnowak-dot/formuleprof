@@ -10,15 +10,34 @@ import type {
   AppSettings,
   AppSnapshot,
   BackupPayload,
+  ContactEntry,
   DevelopmentGoal,
+  DocumentRecord,
+  ExamPlan,
   ExportEnvelope,
   ExportKind,
+  GradeRecord,
   MilestoneInstance,
   ReflectionEntry,
+  SeminarRecord,
+  TeachingWeekEntry,
   TrainingProfile,
   TrainingTemplate,
 } from '../domain/types';
 import { DEFAULT_SETTINGS } from '../data/repository';
+
+/**
+ * Leere Bereiche des Wegweisers. Sicherungen älterer Schemaversionen kennen
+ * diese Bereiche nicht; sie werden dann leer angelegt.
+ */
+export const EMPTY_REGISTERS = {
+  teachingWeeks: [] as TeachingWeekEntry[],
+  seminarRecords: [] as SeminarRecord[],
+  documents: [] as DocumentRecord[],
+  contacts: [] as ContactEntry[],
+  examPlan: null as ExamPlan | null,
+  grades: null as GradeRecord | null,
+};
 
 export class ImportError extends Error {}
 
@@ -35,7 +54,10 @@ function envelope<T>(kind: ExportKind, data: T, now: Date): ExportEnvelope<T> {
   };
 }
 
-/** Vollständige Sicherung. Reflexionen nur bei ausdrücklicher Zustimmung. */
+/**
+ * Vollständige Sicherung: Profil, Vorlagen, Strecke und alle Bereiche des
+ * Wegweisers. Reflexionen nur bei ausdrücklicher Zustimmung.
+ */
 export function buildBackup(
   snapshot: AppSnapshot,
   options: { includeReflections: boolean },
@@ -49,6 +71,12 @@ export function buildBackup(
       milestones: snapshot.milestones,
       goals: snapshot.goals,
       reflections: options.includeReflections ? snapshot.reflections : [],
+      teachingWeeks: snapshot.teachingWeeks,
+      seminarRecords: snapshot.seminarRecords,
+      documents: snapshot.documents,
+      contacts: snapshot.contacts,
+      examPlan: snapshot.examPlan,
+      grades: snapshot.grades,
       settings: snapshot.settings,
     },
     now,
@@ -132,6 +160,13 @@ export function parseBackup(raw: string): AppSnapshot {
     milestones,
     goals,
     reflections,
+    // Bereiche des Wegweisers – in Sicherungen der Schemaversion 1 nicht enthalten.
+    teachingWeeks: requireArray<TeachingWeekEntry>(data.teachingWeeks ?? [], 'Unterrichtseinsatz'),
+    seminarRecords: requireArray<SeminarRecord>(data.seminarRecords ?? [], 'Ausbildungsstunden'),
+    documents: requireArray<DocumentRecord>(data.documents ?? [], 'Unterlagen'),
+    contacts: requireArray<ContactEntry>(data.contacts ?? [], 'Ansprechpersonen'),
+    examPlan: (data.examPlan ?? null) as ExamPlan | null,
+    grades: (data.grades ?? null) as GradeRecord | null,
     settings: { ...DEFAULT_SETTINGS, ...((data.settings ?? {}) as Partial<AppSettings>) },
   };
 }
@@ -162,6 +197,12 @@ export function mergeSnapshots(current: AppSnapshot, imported: AppSnapshot): App
     milestones: mergeById(current.milestones, imported.milestones),
     goals: mergeById(current.goals, imported.goals),
     reflections: mergeById(current.reflections, imported.reflections),
+    teachingWeeks: mergeById(current.teachingWeeks, imported.teachingWeeks),
+    seminarRecords: mergeById(current.seminarRecords, imported.seminarRecords),
+    documents: mergeById(current.documents, imported.documents),
+    contacts: mergeById(current.contacts, imported.contacts),
+    examPlan: imported.examPlan ?? current.examPlan,
+    grades: imported.grades ?? current.grades,
     settings: { ...current.settings, ...imported.settings },
   };
 }

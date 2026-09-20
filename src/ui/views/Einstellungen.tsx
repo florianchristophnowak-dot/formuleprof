@@ -207,6 +207,20 @@ export function Einstellungen() {
             {profile.cohortCode ? ` · Jahrgangscode: ${profile.cohortCode}` : ''}
           </p>
 
+          {profile.trainingForm === 'Teilzeit' && (
+            <Notice>
+              Bei Teilzeit verlängert sich der Vorbereitungsdienst angemessen und die Wochenstunden des
+              Ausbildungsunterrichts verringern sich im Verhältnis zum Teilzeitanteil. Trage die vereinbarte
+              Gesamtdauer oben ein, damit Etappen und Termine passen.
+            </Notice>
+          )}
+          {profile.subjects.length === 1 && (
+            <p className="klein gedaempft">
+              Ausgebildet wird in zwei Fächern; ein Doppelfach Kunst oder Musik zählt als ein Ausbildungsfach.
+              Einzelne Meilensteine – etwa die zweite benotete Lehrprobe – entfallen bei nur einem Fach.
+            </p>
+          )}
+
           <button type="button" className="knopf knopf--klein" onClick={() => app.recalculate()}>
             <RefreshCw size={15} aria-hidden="true" /> Strecke neu berechnen
           </button>
@@ -253,12 +267,22 @@ export function Einstellungen() {
           />
           <span>Nach Unterrichtsbesuchen, Lehrproben und Gesprächen einen Boxenstopp vorschlagen</span>
         </label>
+        <label className="wahl">
+          <input
+            type="checkbox"
+            checked={app.settings.printGrades}
+            onChange={(event) => app.saveSettings({ printGrades: event.target.checked })}
+          />
+          <span>Notenübersicht in der Druckansicht mitdrucken</span>
+        </label>
       </Card>
 
       <Card title="Sicherung und Wiederherstellung" icon={<FileJson size={18} aria-hidden="true" />}>
         <p className="klein gedaempft">
-          Die Sicherung ist eine versionierte JSON-Datei und bleibt auf deinem Gerät. Persönliche Reflexionen
-          werden nur mitgesichert, wenn du dies ausdrücklich auswählst.
+          Die Sicherung ist eine versionierte JSON-Datei und bleibt auf deinem Gerät. Sie enthält Profil,
+          Vorlagen, Strecke und alle Bereiche des Wegweisers – Unterrichtseinsatz, Ausbildungsstunden,
+          Unterlagen, Ansprechpersonen, Prüfungsfahrplan und Notenübersicht. Persönliche Reflexionen werden nur
+          mitgesichert, wenn du dies ausdrücklich auswählst.
         </p>
         <label className="wahl">
           <input
@@ -284,6 +308,12 @@ export function Einstellungen() {
                       milestones: app.milestones,
                       goals: app.goals,
                       reflections: app.reflections,
+                      teachingWeeks: app.teachingWeeks,
+                      seminarRecords: app.seminarRecords,
+                      documents: app.documents,
+                      contacts: app.contacts,
+                      examPlan: app.examPlan,
+                      grades: app.grades,
                       settings: app.settings,
                     },
                     { includeReflections: app.settings.includeReflectionsInBackup },

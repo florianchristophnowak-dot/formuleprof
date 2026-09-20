@@ -624,6 +624,14 @@ textarea {
   background: var(--gruen-800);
 }
 
+@media (max-width: 400px) {
+  /* Sieben Einträge müssen auch auf schmalen Displays lesbar bleiben. */
+  .tableiste__link {
+    font-size: 0.56rem;
+    padding: 7px 0;
+  }
+}
+
 @media (min-width: 900px) {
   .hauptnavigation {
     display: block;
@@ -1078,6 +1086,117 @@ textarea {
   margin: 0 0 10px;
 }
 
+/* ----------------------------- Wegweiser ----------------------------- */
+
+.reiter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  border-bottom: 2px solid var(--rahmen);
+  padding-bottom: 8px;
+}
+
+.reiter__knopf {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--text-gedaempft);
+  background: var(--flaeche-2);
+  border: 1px solid var(--rahmen);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.reiter__knopf:hover {
+  color: var(--text);
+  border-color: var(--rahmen-stark);
+}
+
+.reiter__knopf--aktiv {
+  background: var(--primaer);
+  border-color: var(--primaer);
+  color: var(--primaer-text);
+}
+
+.wegweiser__stand {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.wegweiser__stand li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.wegweiser__punkt {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  margin-top: 5px;
+  border: 1px solid var(--rahmen-stark);
+  background: var(--flaeche);
+}
+
+.wegweiser__punkt--begonnen {
+  background: var(--primaer);
+  border-color: var(--primaer);
+}
+
+.wegweiser__naechstes {
+  display: block;
+  color: var(--akzent);
+}
+
+:root[data-theme='dunkel'] .wegweiser__naechstes {
+  color: var(--akzent);
+}
+
+.wegweiser__verweis {
+  display: block;
+  padding: 8px 10px;
+  border: 1px solid var(--rahmen);
+  border-left: 3px solid var(--akzent);
+  background: var(--flaeche-2);
+  color: inherit;
+  text-decoration: none;
+}
+
+.wegweiser__verweis:hover {
+  border-color: var(--rahmen-stark);
+  background: var(--bg-gedaempft);
+}
+
+.wegweiser__verweis strong {
+  display: block;
+}
+
+.wegweiser__verweis .klein {
+  display: block;
+}
+
+.vorschlag {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border: 1px solid var(--rahmen);
+  background: var(--flaeche-2);
+}
+
+.warnhinweis {
+  color: var(--akzent);
+}
+
 /* ---------------------------- Baukasten ------------------------------ */
 
 .tabelle {
@@ -1101,6 +1220,28 @@ textarea {
 
 .tabelle__rollbereich {
   overflow-x: auto;
+  max-width: 100%;
+}
+
+/*
+ * Rasterelemente wachsen sonst auf die Breite ihres Inhalts. Damit breite
+ * Tabellen innerhalb ihres Rollbereichs bleiben, wird die Mindestbreite
+ * ausdrücklich aufgehoben.
+ */
+.stapel > *,
+.raster > *,
+.karte {
+  min-width: 0;
+}
+
+.tabelle__zeile--aktuell > th,
+.tabelle__zeile--aktuell > td {
+  background: var(--primaer-schwach);
+}
+
+.tabelle__zeile--vergangen > th,
+.tabelle__zeile--vergangen > td {
+  color: var(--text-gedaempft);
 }
 
 /* ------------------------------ Druck -------------------------------- */
@@ -1121,6 +1262,7 @@ textarea {
   .kopfzeile,
   .tableiste,
   .fusszeile,
+  .reiter,
   .nicht-drucken {
     display: none !important;
   }
@@ -1149,6 +1291,11 @@ textarea {
 
   .tabelle th {
     background: #eeeeee;
+  }
+
+  /* Im Druck wird nicht gerollt – die Tabellen stehen vollständig. */
+  .tabelle__rollbereich {
+    overflow: visible;
   }
 
   a[href^='#']::after {

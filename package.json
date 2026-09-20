@@ -1,9 +1,9 @@
 {
   "name": "formuleprof",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
-  "description": "FormuleProf – Dein persönlicher Weg durch den Vorbereitungsdienst",
+  "description": "FormuleProf – Dein persönlicher Wegweiser durch den Vorbereitungsdienst",
   "license": "MIT",
   "scripts": {
     "dev": "vite",

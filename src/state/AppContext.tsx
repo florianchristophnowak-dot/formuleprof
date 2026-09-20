@@ -7,18 +7,25 @@ import type { ReactNode } from 'react';
 import { DEFAULT_SETTINGS, Repository } from '../data/repository';
 import { createStorageAdapter } from '../data/storage';
 import { buildSchedule, setManualDate } from '../domain/schedule';
-import { today as todayIso } from '../domain/dates';
+import { mondayOf, today as todayIso } from '../domain/dates';
+import { teachingWeekId } from '../domain/teachingLoad';
 import { mergeSnapshots } from '../io/exportImport';
 import type { ImportMode } from '../io/exportImport';
 import { routeToMilestones } from '../io/routeExchange';
 import type {
   AppSettings,
   AppSnapshot,
+  ContactEntry,
   DevelopmentGoal,
+  DocumentRecord,
+  ExamPlan,
+  GradeRecord,
   IsoDate,
   MilestoneInstance,
   ReflectionEntry,
   RouteExport,
+  SeminarRecord,
+  TeachingWeekEntry,
   TrainingProfile,
   TrainingTemplate,
 } from '../domain/types';
@@ -39,12 +46,27 @@ interface AppContextValue extends AppSnapshot {
   updateProfile: (patch: Partial<TrainingProfile>) => Promise<void>;
   updateMilestone: (id: string, patch: Partial<MilestoneInstance>) => Promise<void>;
   changeMilestoneDate: (id: string, start: IsoDate | null, end?: IsoDate) => Promise<void>;
+  /** Eigenen Termin aufnehmen – er bleibt bei Neuberechnungen unverändert. */
+  addMilestone: (milestone: MilestoneInstance) => Promise<void>;
+  /** Entfernt einen selbst angelegten Termin. */
+  removeMilestone: (id: string) => Promise<void>;
   recalculate: () => Promise<void>;
   saveGoals: (goals: DevelopmentGoal[]) => Promise<void>;
   addReflection: (entry: ReflectionEntry) => Promise<void>;
   removeReflection: (id: string) => Promise<void>;
   saveTemplate: (template: TrainingTemplate) => Promise<void>;
   removeTemplate: (id: string) => Promise<void>;
+  saveTeachingWeek: (entry: TeachingWeekEntry) => Promise<void>;
+  removeTeachingWeek: (id: string) => Promise<void>;
+  saveSeminarRecord: (record: SeminarRecord) => Promise<void>;
+  removeSeminarRecord: (id: string) => Promise<void>;
+  saveDocument: (record: DocumentRecord) => Promise<void>;
+  removeDocument: (id: string) => Promise<void>;
+  saveContact: (entry: ContactEntry) => Promise<void>;
+  removeContact: (id: string) => Promise<void>;
+  saveExamPlan: (patch: Partial<ExamPlan>) => Promise<void>;
+  /** Noten speichern; als Funktion aufgerufen liegt der aktuelle Stand an. */
+  saveGrades: (record: GradeRecord | ((current: GradeRecord | null) => GradeRecord)) => Promise<void>;
   saveSettings: (patch: Partial<AppSettings>) => Promise<void>;
   importSnapshot: (snapshot: AppSnapshot, mode: ImportMode) => Promise<void>;
   importRoute: (route: RouteExport) => Promise<void>;
@@ -59,6 +81,12 @@ const EMPTY: AppSnapshot = {
   milestones: [],
   goals: [],
   reflections: [],
+  teachingWeeks: [],
+  seminarRecords: [],
+  documents: [],
+  contacts: [],
+  examPlan: null,
+  grades: null,
   settings: DEFAULT_SETTINGS,
 };
 
@@ -70,6 +98,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const repository = repositoryRef.current;
 
   const [snapshot, setSnapshot] = useState<AppSnapshot>(EMPTY);
+  /**
+   * Synchron geführte Kopien von Prüfungsplan und Noten. Beim Ausfüllen
+   * mehrerer Felder in kurzer Folge liegt der Zustand aus dem Rendern sonst
+   * hinter den Eingaben zurück und einzelne Angaben gingen verloren.
+   */
+  const examPlanRef = useRef<ExamPlan | null>(null);
+  const gradesRef = useRef<GradeRecord | null>(null);
   const [status, setStatus] = useState<'laden' | 'bereit' | 'fehler'>('laden');
   const [error, setError] = useState<string | null>(null);
   const [lastRecalculation, setLastRecalculation] = useState<RecalculationInfo | null>(null);
@@ -81,8 +116,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
       try {
         await repository.ensureSeeded();
         const loaded = await repository.loadSnapshot();
+        // Nach einem Wechsel der Vorlagenversion wird die Strecke einmalig
+        // abgeglichen. Persönliche Angaben und eigene Termine bleiben erhalten.
+        const template = loaded.templates.find((t) => t.id === loaded.profile?.templateId);
+        let milestones = loaded.milestones;
+        if (loaded.profile && template) {
+          const result = buildSchedule(template, loaded.profile, { existing: loaded.milestones });
+          if (
+            result.changed.length > 0 ||
+            result.removed.length > 0 ||
+            result.milestones.length !== loaded.milestones.length
+          ) {
+            await repository.saveMilestones(result.milestones);
+            milestones = result.milestones;
+          }
+        }
         if (!cancelled) {
-          setSnapshot(loaded);
+          examPlanRef.current = loaded.examPlan;
+          gradesRef.current = loaded.grades;
+          setSnapshot({ ...loaded, milestones });
           setStatus('bereit');
         }
       } catch (cause) {
@@ -217,6 +269,152 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [repository],
   );
 
+  const addMilestone = useCallback(
+    async (milestone: MilestoneInstance) => {
+      await repository.saveMilestone(milestone);
+      setSnapshot((current) => ({
+        ...current,
+        milestones: [...current.milestones.filter((m) => m.id !== milestone.id), milestone].sort((a, b) =>
+          (a.manualStart ?? a.computedStart) < (b.manualStart ?? b.computedStart) ? -1 : 1,
+        ),
+      }));
+    },
+    [repository],
+  );
+
+  const removeMilestone = useCallback(
+    async (id: string) => {
+      const milestones = snapshot.milestones.filter((m) => m.id !== id);
+      await repository.saveMilestones(milestones);
+      setSnapshot((current) => ({ ...current, milestones }));
+    },
+    [repository, snapshot.milestones],
+  );
+
+  /* ---------------------------- Wegweiser ---------------------------- */
+
+  const saveTeachingWeek = useCallback(
+    async (entry: TeachingWeekEntry) => {
+      const stored: TeachingWeekEntry = {
+        ...entry,
+        weekStart: mondayOf(entry.weekStart),
+        id: entry.id || teachingWeekId(entry.weekStart),
+        updatedAt: new Date().toISOString(),
+      };
+      await repository.saveTeachingWeek(stored);
+      setSnapshot((current) => ({
+        ...current,
+        teachingWeeks: [...current.teachingWeeks.filter((item) => item.id !== stored.id), stored].sort((a, b) =>
+          a.weekStart.localeCompare(b.weekStart),
+        ),
+      }));
+    },
+    [repository],
+  );
+
+  const removeTeachingWeek = useCallback(
+    async (id: string) => {
+      await repository.removeTeachingWeek(id);
+      setSnapshot((current) => ({
+        ...current,
+        teachingWeeks: current.teachingWeeks.filter((item) => item.id !== id),
+      }));
+    },
+    [repository],
+  );
+
+  const saveSeminarRecord = useCallback(
+    async (record: SeminarRecord) => {
+      const stored: SeminarRecord = { ...record, updatedAt: new Date().toISOString() };
+      await repository.saveSeminarRecord(stored);
+      setSnapshot((current) => ({
+        ...current,
+        seminarRecords: [...current.seminarRecords.filter((item) => item.id !== stored.id), stored].sort((a, b) =>
+          a.date.localeCompare(b.date),
+        ),
+      }));
+    },
+    [repository],
+  );
+
+  const removeSeminarRecord = useCallback(
+    async (id: string) => {
+      await repository.removeSeminarRecord(id);
+      setSnapshot((current) => ({
+        ...current,
+        seminarRecords: current.seminarRecords.filter((item) => item.id !== id),
+      }));
+    },
+    [repository],
+  );
+
+  const saveDocument = useCallback(
+    async (record: DocumentRecord) => {
+      const stored: DocumentRecord = { ...record, updatedAt: new Date().toISOString() };
+      await repository.saveDocument(stored);
+      setSnapshot((current) => ({
+        ...current,
+        documents: [...current.documents.filter((item) => item.id !== stored.id), stored],
+      }));
+    },
+    [repository],
+  );
+
+  const removeDocument = useCallback(
+    async (id: string) => {
+      await repository.removeDocument(id);
+      setSnapshot((current) => ({ ...current, documents: current.documents.filter((item) => item.id !== id) }));
+    },
+    [repository],
+  );
+
+  const saveContact = useCallback(
+    async (entry: ContactEntry) => {
+      const stored: ContactEntry = { ...entry, updatedAt: new Date().toISOString() };
+      await repository.saveContact(stored);
+      setSnapshot((current) => ({
+        ...current,
+        contacts: [...current.contacts.filter((item) => item.id !== stored.id), stored],
+      }));
+    },
+    [repository],
+  );
+
+  const removeContact = useCallback(
+    async (id: string) => {
+      await repository.removeContact(id);
+      setSnapshot((current) => ({ ...current, contacts: current.contacts.filter((item) => item.id !== id) }));
+    },
+    [repository],
+  );
+
+  const saveExamPlan = useCallback(
+    async (patch: Partial<ExamPlan>) => {
+      const plan: ExamPlan = {
+        id: 'pruefungsplan',
+        mode: null,
+        ...(examPlanRef.current ?? {}),
+        ...patch,
+        updatedAt: new Date().toISOString(),
+      };
+      examPlanRef.current = plan;
+      await repository.saveExamPlan(plan);
+      setSnapshot((current) => ({ ...current, examPlan: plan }));
+    },
+    [repository],
+  );
+
+  const saveGrades = useCallback(
+    async (record: GradeRecord | ((current: GradeRecord | null) => GradeRecord)) => {
+      const next = typeof record === 'function' ? record(gradesRef.current) : record;
+      const stored: GradeRecord = { ...next, id: 'noten', updatedAt: new Date().toISOString() };
+      gradesRef.current = stored;
+      await repository.saveGrades(stored);
+      setSnapshot((current) => ({ ...current, grades: stored }));
+    },
+    [repository],
+  );
+
   const saveSettings = useCallback(
     async (patch: Partial<AppSettings>) => {
       const settings = { ...snapshot.settings, ...patch };
@@ -230,6 +428,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     async (imported: AppSnapshot, mode: ImportMode) => {
       const next = mode === 'ersetzen' ? imported : mergeSnapshots(snapshot, imported);
       await repository.replaceAll(next);
+      examPlanRef.current = next.examPlan;
+      gradesRef.current = next.grades;
       setSnapshot(next);
     },
     [repository, snapshot],
@@ -268,6 +468,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await repository.clearAll();
     await repository.ensureSeeded();
     const loaded = await repository.loadSnapshot();
+    examPlanRef.current = loaded.examPlan;
+    gradesRef.current = loaded.grades;
     setSnapshot(loaded);
   }, [repository]);
 
@@ -283,12 +485,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
     updateProfile,
     updateMilestone,
     changeMilestoneDate,
+    addMilestone,
+    removeMilestone,
     recalculate,
     saveGoals,
     addReflection,
     removeReflection,
     saveTemplate,
     removeTemplate,
+    saveTeachingWeek,
+    removeTeachingWeek,
+    saveSeminarRecord,
+    removeSeminarRecord,
+    saveDocument,
+    removeDocument,
+    saveContact,
+    removeContact,
+    saveExamPlan,
+    saveGrades,
     saveSettings,
     importSnapshot,
     importRoute,

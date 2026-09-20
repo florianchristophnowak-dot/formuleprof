@@ -21,6 +21,7 @@ import {
   TRAINING_FORMS,
 } from '../../domain/types';
 import type {
+  ContactEntry,
   DevelopmentGoal,
   FederalState,
   SchoolType,
@@ -37,6 +38,7 @@ const STEPS = [
   'Bekannte Termine',
   'Erledigtes',
   'Entwicklungsziel',
+  'Wegweiser',
   'Zusammenfassung',
 ] as const;
 
@@ -54,6 +56,9 @@ interface Draft {
   completed: Record<string, boolean>;
   goalTitle: string;
   goalDescription: string;
+  /** Fachleitungen je Ausbildungsfach – erster Eintrag im Wegweiser. */
+  leaders: Record<string, string>;
+  mentor: string;
 }
 
 export function Onboarding({ navigate }: { navigate: (route: Route) => void }) {
@@ -77,6 +82,8 @@ export function Onboarding({ navigate }: { navigate: (route: Route) => void }) {
     completed: {},
     goalTitle: '',
     goalDescription: '',
+    leaders: {},
+    mentor: '',
   }));
 
   const set = (patch: Partial<Draft>) => setDraft((current) => ({ ...current, ...patch }));
@@ -165,6 +172,30 @@ export function Onboarding({ navigate }: { navigate: (route: Route) => void }) {
 
     // Die manuell erfassten Termine wirken sich auf abhängige Termine aus.
     const recalculated = buildSchedule(template, profileDraft, { existing: milestones });
+
+    const now = new Date().toISOString();
+    const contacts: ContactEntry[] = [
+      ...Object.entries(draft.leaders)
+        .filter(([, name]) => name.trim().length > 0)
+        .map(([subject, name], index) => ({
+          id: `kontakt-fachleitung-${index + 1}`,
+          name: name.trim(),
+          role: 'Fachleitung' as const,
+          subject,
+          updatedAt: now,
+        })),
+      ...(draft.mentor.trim()
+        ? [
+            {
+              id: 'kontakt-mentor',
+              name: draft.mentor.trim(),
+              role: 'Mentorin oder Mentor' as const,
+              updatedAt: now,
+            },
+          ]
+        : []),
+    ];
+
     await app.importSnapshot(
       {
         profile: profileDraft,
@@ -176,12 +207,18 @@ export function Onboarding({ navigate }: { navigate: (route: Route) => void }) {
                 id: `ziel-${Date.now().toString(36)}`,
                 title: draft.goalTitle.trim(),
                 description: draft.goalDescription.trim(),
-                createdAt: new Date().toISOString(),
+                createdAt: now,
                 active: true,
               } satisfies DevelopmentGoal,
             ]
           : app.goals,
         reflections: app.reflections,
+        teachingWeeks: app.teachingWeeks,
+        seminarRecords: app.seminarRecords,
+        documents: app.documents,
+        contacts: contacts.length > 0 ? contacts : app.contacts,
+        examPlan: app.examPlan,
+        grades: app.grades,
         settings: app.settings,
       },
       'ersetzen',
@@ -484,7 +521,49 @@ export function Onboarding({ navigate }: { navigate: (route: Route) => void }) {
           </>
         )}
 
-        {step === 7 && preview && template && (
+        {step === 7 && (
+          <>
+            <h2>Dein Wegweiser</h2>
+            <p>
+              {APP_NAME} ist nicht nur ein Terminplan: Du füllst den Wegweiser im Verlauf der Ausbildung
+              weiter. Dort sammeln sich dein Unterrichtseinsatz je Woche, die Ausbildungsstunden am
+              Studienseminar, Unterlagen und Formulare, Ansprechpersonen, der Prüfungsfahrplan und deine
+              Notenübersicht.
+            </p>
+            <p className="klein gedaempft">
+              Daraus entstehen die Hinweise im Cockpit – und beim Ausbildungsgespräch hast du deine Belege
+              beisammen. Du kannst jetzt schon anfangen oder alles später ergänzen.
+            </p>
+            {profileDraft.subjects.length > 0 ? (
+              profileDraft.subjects.map((subject) => (
+                <div className="feld" key={subject}>
+                  <label htmlFor={`ob-fachleitung-${subject}`}>Fachleitung {subject} (optional)</label>
+                  <input
+                    id={`ob-fachleitung-${subject}`}
+                    type="text"
+                    value={draft.leaders[subject] ?? ''}
+                    onChange={(event) => set({ leaders: { ...draft.leaders, [subject]: event.target.value } })}
+                  />
+                </div>
+              ))
+            ) : (
+              <p className="klein gedaempft">
+                Sobald deine Fächer eingetragen sind, kannst du hier die Fachleitungen ergänzen.
+              </p>
+            )}
+            <div className="feld">
+              <label htmlFor="ob-mentor">Mentorin oder Mentor an der Schule (optional)</label>
+              <input
+                id="ob-mentor"
+                type="text"
+                value={draft.mentor}
+                onChange={(event) => set({ mentor: event.target.value })}
+              />
+            </div>
+          </>
+        )}
+
+        {step === 8 && preview && template && (
           <>
             <h2>So wurde deine Strecke berechnet</h2>
             <dl className="zusammenfassung">
@@ -535,6 +614,18 @@ export function Onboarding({ navigate }: { navigate: (route: Route) => void }) {
 
               <dt>Entwicklungsziel</dt>
               <dd>{draft.goalTitle.trim() || 'Noch kein Ziel festgelegt.'}</dd>
+
+              <dt>Wegweiser</dt>
+              <dd>
+                {template.teachingLoad
+                  ? `Soll-Korridore für den Unterrichtseinsatz sind hinterlegt (${formatNumber(
+                      template.teachingLoad.stages.length,
+                    )} Abschnitte).`
+                  : 'Für diese Vorlage sind keine Soll-Korridore hinterlegt.'}
+                {template.seminarRequirements && template.seminarRequirements.length > 0
+                  ? ' Der Mindestumfang der Ausbildungsstunden ist hinterlegt.'
+                  : ''}
+              </dd>
             </dl>
 
             <Notice>

@@ -8,6 +8,7 @@ import {
   AlertTriangle,
   ArrowRight,
   CalendarClock,
+  Compass,
   Flag,
   Gauge,
   MapPin,
@@ -20,9 +21,11 @@ import { useApp } from '../../state/AppContext';
 import { computeProgress, nextMandatoryMilestone, openIssues } from '../../domain/progress';
 import { selectNextSteps } from '../../domain/priority';
 import { detectChallenges } from '../../domain/challenges';
+import { buildGuideOverview } from '../../domain/guide';
 import { effectiveEnd, effectiveStart, trackStateOf } from '../../domain/schedule';
 import { daysBetween, formatCountdown, formatDate, formatNumber, formatRange } from '../../domain/dates';
 import type { ChallengeHint, MilestoneInstance } from '../../domain/types';
+import { href, hrefWithParam } from '../router';
 import type { Route } from '../router';
 
 export function Cockpit({ navigate }: { navigate: (route: Route) => void }) {
@@ -45,9 +48,58 @@ export function Cockpit({ navigate }: { navigate: (route: Route) => void }) {
         reflections: app.reflections,
         todayIso: app.today,
         rules: app.activeTemplate?.challengeRules ?? [],
+        profile: app.profile,
+        template: app.activeTemplate,
+        teachingWeeks: app.teachingWeeks,
+        seminarRecords: app.seminarRecords,
+        documents: app.documents,
+        examPlan: app.examPlan,
       }),
-    [app.milestones, app.goals, app.reflections, app.today, app.activeTemplate],
+    [
+      app.milestones,
+      app.goals,
+      app.reflections,
+      app.today,
+      app.activeTemplate,
+      app.profile,
+      app.teachingWeeks,
+      app.seminarRecords,
+      app.documents,
+      app.examPlan,
+    ],
   );
+
+  /** Stand des Wegweisers – was lässt sich sinnvoll ergänzen? */
+  const guide = useMemo(() => {
+    if (!app.profile) return [];
+    return buildGuideOverview({
+      profile: app.profile,
+      template: app.activeTemplate,
+      milestones: app.milestones,
+      teachingWeeks: app.teachingWeeks,
+      seminarRecords: app.seminarRecords,
+      documents: app.documents,
+      contacts: app.contacts,
+      examPlan: app.examPlan,
+      grades: app.grades,
+      goals: app.goals,
+      reflections: app.reflections,
+      todayIso: app.today,
+    });
+  }, [
+    app.profile,
+    app.activeTemplate,
+    app.milestones,
+    app.teachingWeeks,
+    app.seminarRecords,
+    app.documents,
+    app.contacts,
+    app.examPlan,
+    app.grades,
+    app.goals,
+    app.reflections,
+    app.today,
+  ]);
 
   if (!app.profile || !progress) return null;
 
@@ -233,6 +285,40 @@ export function Cockpit({ navigate }: { navigate: (route: Route) => void }) {
           </div>
         ) : (
           <p>Aktuell sind keine Häufungen oder offenen Vorarbeiten erkennbar.</p>
+        )}
+      </Card>
+
+      {/* Der Wegweiser wächst mit: was gehört als Nächstes hinein? */}
+      <Card
+        title="Was gehört in deinen Wegweiser?"
+        icon={<Compass size={18} aria-hidden="true" />}
+        actions={
+          <a className="knopf knopf--klein" href={href('wegweiser')}>
+            Wegweiser öffnen
+          </a>
+        }
+      >
+        {guide.filter((area) => area.next).length === 0 ? (
+          <p className="klein">
+            In allen Bereichen ist der Bestand aktuell. Der Wegweiser hält deinen Unterrichtseinsatz, die
+            Ausbildungsstunden, Unterlagen, Ansprechpersonen, den Prüfungsfahrplan und die Notenübersicht
+            zusammen.
+          </p>
+        ) : (
+          <ul className="stapel stapel--eng" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+            {guide
+              .filter((area) => area.next)
+              .slice(0, 4)
+              .map((area) => (
+                <li key={area.id}>
+                  <a className="wegweiser__verweis" href={hrefWithParam('wegweiser', 'bereich', area.id)}>
+                    <strong>{area.title}</strong>
+                    <span className="klein">{area.next}</span>
+                    <span className="klein gedaempft">{area.status}</span>
+                  </a>
+                </li>
+              ))}
+          </ul>
         )}
       </Card>
 

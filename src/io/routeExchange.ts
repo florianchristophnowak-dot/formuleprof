@@ -47,8 +47,8 @@ export function buildRouteExport(
   now: Date = new Date(),
 ): ExportEnvelope<RouteExport> {
   const start = fromIso(profile.startDate);
-  const official = milestones.filter((m) => !m.agreed && m.templateId === template.id);
-  const agreed = milestones.filter((m) => m.agreed || m.templateId !== template.id);
+  const official = milestones.filter((m) => !m.agreed && !m.custom && m.templateId === template.id);
+  const agreed = milestones.filter((m) => m.agreed || m.custom || m.templateId !== template.id);
 
   const data: RouteExport = {
     templateId: template.id,

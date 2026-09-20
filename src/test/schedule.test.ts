@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildSchedule,
+  createCustomMilestone,
   createScheduleContext,
   effectiveStart,
   resolveDateRule,
@@ -158,21 +159,22 @@ describe('Neuberechnung', () => {
     const initial = buildSchedule(template, profile, { now: FIXED_NOW });
     const exam = byDefinition(initial.milestones, 'pruefung-unterricht');
     const colloquiumBefore = byDefinition(initial.milestones, 'pruefung-kolloquium');
-    const paperBefore = byDefinition(initial.milestones, 'schriftliche-arbeit');
+    const draftBefore = byDefinition(initial.milestones, 'entwuerfe-pruefung');
 
     const newExamDate = '2027-06-01';
     const result = setManualDate(template, profile, initial.milestones, exam.id, newExamDate, undefined, FIXED_NOW);
 
     const examAfter = byDefinition(result.milestones, 'pruefung-unterricht');
     const colloquiumAfter = byDefinition(result.milestones, 'pruefung-kolloquium');
-    const paperAfter = byDefinition(result.milestones, 'schriftliche-arbeit');
+    const draftAfter = byDefinition(result.milestones, 'entwuerfe-pruefung');
 
     expect(effectiveStart(examAfter)).toBe(newExamDate);
     expect(examAfter.status).toBe('verschoben');
     expect(colloquiumAfter.computedStart).toBe('2027-06-08');
-    expect(paperAfter.computedStart).toBe('2027-04-27');
+    // Die Entwürfe hängen am Prüfungstag und wandern mit.
+    expect(draftAfter.computedStart).toBe('2027-05-31');
     expect(colloquiumAfter.computedStart).not.toBe(colloquiumBefore.computedStart);
-    expect(paperAfter.computedStart).not.toBe(paperBefore.computedStart);
+    expect(draftAfter.computedStart).not.toBe(draftBefore.computedStart);
   });
 
   it('erhält persönliche Angaben bei der Neuberechnung', () => {
@@ -296,5 +298,47 @@ describe('Wechsel der Ausbildungsvorlage', () => {
     expect(kept).toBeDefined();
     expect(kept?.agreed).toBe(true);
     expect(effectiveStart(kept!)).toBe('2026-10-01');
+  });
+});
+
+describe('Eigene Termine', () => {
+  const template = testTemplate();
+
+  it('bleiben bei jeder Neuberechnung und bei einem Wechsel der Vorlage erhalten', () => {
+    const profile = testProfile();
+    const initial = buildSchedule(template, profile, { now: FIXED_NOW });
+
+    const own = createCustomMilestone(
+      {
+        title: 'Zusatzhospitation Physik',
+        category: 'Hospitation',
+        start: '2026-10-05',
+        templateId: template.id,
+        agreed: true,
+      },
+      FIXED_NOW,
+    );
+    expect(own.custom).toBe(true);
+    expect(own.manualStart).toBe('2026-10-05');
+
+    const withOwn = [...initial.milestones, own];
+
+    // Neuberechnung nach geänderter Dauer: der eigene Termin bleibt unverändert.
+    const recalculated = buildSchedule(template, testProfile({ durationMonths: 24 }), {
+      existing: withOwn,
+      now: FIXED_NOW,
+    });
+    const keptOwn = recalculated.milestones.find((m) => m.id === own.id);
+    expect(keptOwn).toBeDefined();
+    expect(effectiveStart(keptOwn!)).toBe('2026-10-05');
+    expect(recalculated.removed).not.toContain(own.id);
+
+    // Wechsel auf eine andere Vorlage: der eigene Termin wandert mit.
+    const other = testTemplate('demo-grundschule');
+    const switched = buildSchedule(other, testProfile({ templateId: other.id }), {
+      existing: recalculated.milestones,
+      now: FIXED_NOW,
+    });
+    expect(switched.milestones.some((m) => m.id === own.id)).toBe(true);
   });
 });

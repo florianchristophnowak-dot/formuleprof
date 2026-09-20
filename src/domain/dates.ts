@@ -9,9 +9,11 @@ import {
   differenceInCalendarDays,
   differenceInCalendarMonths,
   format,
+  getISOWeek,
   isValid,
   parseISO,
   startOfDay,
+  startOfISOWeek,
 } from 'date-fns';
 import { de } from 'date-fns/locale';
 import type { DateOffset, DateUnit, IsoDate } from './types';
@@ -88,6 +90,85 @@ export function trainingMonth(startDate: IsoDate, date: IsoDate): number {
   let months = differenceInCalendarMonths(current, start);
   if (current.getDate() < start.getDate()) months -= 1;
   return months + 1;
+}
+
+/* ----------------------------- Wochen ------------------------------- */
+
+/** Montag der Woche, in der das Datum liegt. */
+export function mondayOf(date: IsoDate): IsoDate {
+  return toIso(startOfISOWeek(fromIso(date)));
+}
+
+export function addDaysIso(date: IsoDate, days: number): IsoDate {
+  return toIso(addDays(fromIso(date), days));
+}
+
+/** Kalenderwoche als Text, z. B. „KW 07“. */
+export function isoWeekLabel(date: IsoDate): string {
+  return `KW ${String(getISOWeek(fromIso(date))).padStart(2, '0')}`;
+}
+
+/**
+ * Ausbildungshalbjahr, in dem ein Datum liegt (1-basiert).
+ *
+ * Ein Ausbildungshalbjahr wird mit sechs Monaten ab Ausbildungsbeginn
+ * angesetzt, da der Vorbereitungsdienst zum Beginn eines Schulhalbjahres
+ * aufgenommen wird.
+ */
+export function halfYearOfDate(startDate: IsoDate, date: IsoDate, monthsPerHalfYear = 6): number {
+  const start = fromIso(startDate);
+  const current = fromIso(date);
+  if (current < start) return 1;
+  let months = differenceInCalendarMonths(current, start);
+  if (current.getDate() < start.getDate()) months -= 1;
+  return Math.floor(Math.max(months, 0) / monthsPerHalfYear) + 1;
+}
+
+/* ---------------------------- Werktage ------------------------------ */
+
+/**
+ * Werktag im Sinne der Prüfungsfristen. Sonntage sind stets ausgenommen;
+ * ob Samstage zählen, gibt die jeweilige Regelung vor.
+ */
+export function isWorkday(date: IsoDate, countSaturdays = false): boolean {
+  const day = fromIso(date).getDay();
+  if (day === 0) return false;
+  if (day === 6) return countSaturdays;
+  return true;
+}
+
+/** Nächster Werktag vor dem angegebenen Datum. */
+export function previousWorkday(date: IsoDate, countSaturdays = false): IsoDate {
+  let current = addDaysIso(date, -1);
+  // Höchstens eine Woche zurück – danach liegt in jedem Fall ein Werktag.
+  for (let step = 0; step < 14 && !isWorkday(current, countSaturdays); step += 1) {
+    current = addDaysIso(current, -1);
+  }
+  return current;
+}
+
+/**
+ * Datum, das die angegebene Anzahl Werktage vor einem Bezugstag liegt.
+ * Der Bezugstag selbst wird nicht mitgezählt.
+ */
+export function workdaysBefore(date: IsoDate, count: number, countSaturdays = false): IsoDate {
+  let current = date;
+  for (let remaining = Math.max(count, 0); remaining > 0; remaining -= 1) {
+    current = previousWorkday(current, countSaturdays);
+  }
+  return current;
+}
+
+/** Anzahl der Werktage zwischen zwei Datumsangaben (Startdatum ausgenommen). */
+export function workdaysBetween(from: IsoDate, to: IsoDate, countSaturdays = false): number {
+  if (to <= from) return 0;
+  let count = 0;
+  let current = from;
+  while (current < to) {
+    current = addDaysIso(current, 1);
+    if (isWorkday(current, countSaturdays)) count += 1;
+  }
+  return count;
 }
 
 export function daysBetween(from: IsoDate, to: IsoDate): number {

@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from 'react';
 export const ROUTES = [
   'cockpit',
   'strecke',
+  'wegweiser',
   'roadbook',
   'boxenstopp',
   'baukasten',
@@ -40,4 +41,16 @@ export function useRoute(): [Route, (route: Route) => void] {
 
 export function href(route: Route): string {
   return `#/${route}`;
+}
+
+/** Adresse mit einem einzelnen Parameter, z. B. `#/wegweiser?bereich=stunden`. */
+export function hrefWithParam(route: Route, key: string, value: string): string {
+  return `#/${route}?${key}=${encodeURIComponent(value)}`;
+}
+
+/** Liest einen Parameter aus der aktuellen Adresse. */
+export function readParam(key: string): string | null {
+  const raw = window.location.hash.split('?')[1] ?? '';
+  const value = new URLSearchParams(raw).get(key);
+  return value && value.length > 0 ? value : null;
 }
